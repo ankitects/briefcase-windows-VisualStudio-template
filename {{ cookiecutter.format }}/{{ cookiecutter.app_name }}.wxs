@@ -35,6 +35,9 @@
             AllowSameVersionUpgrades="yes"
             Schedule="afterInstallInitialize" />
 
+        <!-- "a" forces every file to be installed regardless of version. -->
+        <Property Id="REINSTALLMODE" Value="amus" />
+
         <Icon Id="ProductIcon" SourceFile="{{ formal_name }}/icon.ico" />
 
         <!-- Add/Remove Programs settings -->
