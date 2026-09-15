@@ -14,7 +14,21 @@
         Scope="{{ 'perUserOrMachine' if 'User' in cookiecutter.install_scope else 'perMachine' }}">
         <!-- See scope comments below -->
 
-        <Media Id="1" Cabinet="product.cab" EmbedCab="yes" />
+        <Launch Condition="Installed OR NOT OLD_ANKI_HKLM_UNINSTALLER" Message="A previous Anki version needs to be uninstalled first. After uninstallation completes, please run this installer again." />
+
+        <Property Id="OLD_ANKI_INSTALL_DIR" Secure="yes">
+            <RegistrySearch Id="OldAnkiSearch" Root="HKCU" Key="Software\Anki" Name="Install_Dir64" Type="raw" />
+        </Property>
+
+        <Property Id="OLD_ANKI_HKLM_UNINSTALLER" Secure="yes">
+            <RegistrySearch
+                Id="OldAnkiSearchHKLM" Root="HKLM" Key="Software\WOW6432Node\Anki"
+                Name="Install_Dir64" Type="directory">
+            <FileSearch Id="OldAnkiUninstallerSearchHKLM" Name="uninstall.exe" />
+            </RegistrySearch>
+        </Property>
+
+        <Media Id="1" Cabinet="product.cab" EmbedCab="yes" CompressionLevel="{{ cookiecutter.compression_level }}" />
 
         <MajorUpgrade
             DowngradeErrorMessage="A newer version of [ProductName] is already installed."
@@ -158,17 +172,30 @@
             Value="[INSTALLFOLDER]{{ cookiecutter.binary_path }}"
             After="CostFinalize" />
 
+        <Component
+            Id="FileAssocIcon"
+            Directory="INSTALLFOLDER">
+            <File
+                Id="FileAssocIconFile"
+                Source="{{ formal_name }}/icon.ico"
+                KeyPath="yes" />
+        </Component>
+
         {% for document_type_id, document_type in cookiecutter.document_types|dictsort -%}
         <Component
             Id="FileAssociation.{{ document_type_id }}"
             Directory="INSTALLFOLDER">
-            <File
-                Id="ProductIcon.{{ document_type_id|xml_escape }}"
-                Source="{{ cookiecutter.app_name }}-{{ document_type_id|xml_escape }}.ico" />
+            <RegistryValue
+                Root="HKMU"
+                Key="Software\{{ author }}\{{ formal_name }}"
+                Name="FileAssociation.{{ document_type_id|xml_escape }}"
+                Type="integer"
+                Value="1"
+                KeyPath="yes" />
             <ProgId
                 Id="{{ cookiecutter.bundle }}.{{ cookiecutter.app_name }}.{{ document_type_id|xml_escape }}"
                 Description="{{ document_type.description|xml_escape }}"
-                Icon="ProductIcon.{{ document_type_id }}">
+                Icon="FileAssocIconFile">
                 <Extension
                     Id="{{ document_type.extension }}"
                     ContentType="{% if document_type.get('mime_type') %}{{ document_type.mime_type|xml_escape }}{% else %}application/x-{{ cookiecutter.app_name }}-{{ document_type_id }}{% endif %}">
@@ -196,6 +223,9 @@
             <ComponentRef Id="ApplicationShortcuts" />
             {%- endif %}
 
+            {%- if cookiecutter.document_types %}
+            <ComponentRef Id="FileAssocIcon" />
+            {%- endif %}
             {%- for document_type_id in cookiecutter.document_types.keys()|sort %}
             <ComponentRef Id="FileAssociation.{{ document_type_id }}" />
             {%- endfor %}
@@ -1035,6 +1065,14 @@
                 Order="99" />
         </UI>
 
+        <!-- Uninstall old Anki (NSIS-based launcher, per-user) -->
+        <CustomAction
+            Id="uninstallOldAnki"
+            Directory="TARGETDIR"
+            ExeCommand="[SystemFolder]cmd.exe /c &quot;if exist &quot;[OLD_ANKI_INSTALL_DIR]\uninstall.exe&quot; (set ANKI_LAUNCHER=1 &amp;&amp; &quot;[OLD_ANKI_INSTALL_DIR]\uninstall.exe&quot; /S)&quot;"
+            Execute="immediate"
+            Return="check" />
+
         {% if cookiecutter.post_install_script %}
         <!-- Post-install and Pre-uninstall scripts -->
         <!-- Execute="deferred" runs in server process where Impersonate="no" takes effect -->
@@ -1098,6 +1136,7 @@
             Impersonate="no"/>
         {% endif %}
         <InstallExecuteSequence>
+            <Custom Action="uninstallOldAnki" Before="InstallInitialize" Condition="OLD_ANKI_INSTALL_DIR AND NOT Installed AND NOT REMOVE" />
         {% if cookiecutter.post_install_script %}
             <!-- Interactive install -->
             <Custom Action="PostInstallActionInteractive" Before="InstallFinalize" Condition='NOT Installed AND INSTALL_UNATTENDED = "0"' />
