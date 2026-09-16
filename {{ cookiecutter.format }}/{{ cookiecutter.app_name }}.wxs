@@ -38,6 +38,18 @@
         <!-- "a" forces every file to be installed regardless of version. -->
         <Property Id="REINSTALLMODE" Value="amus" />
 
+        <!-- FindRelatedProducts only detects products installed in the current
+        install context, and it runs in the UI sequence before InstallScopeDlg,
+        i.e. while the context is still the per-user default. A per-machine
+        installation is therefore never detected, and the upgrade installs a
+        second product on top of the old one instead of removing it. Windows
+        Installer skips FindRelatedProducts in the execute sequence only if it
+        already ran in the UI sequence, so suppressing it here makes it run
+        after the user's scope choice has been applied. -->
+        <InstallUISequence>
+            <FindRelatedProducts Suppress="yes" />
+        </InstallUISequence>
+
         <Icon Id="ProductIcon" SourceFile="{{ formal_name }}/icon.ico" />
 
         <!-- Add/Remove Programs settings -->
