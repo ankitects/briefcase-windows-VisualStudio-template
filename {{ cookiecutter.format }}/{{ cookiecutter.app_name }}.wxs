@@ -62,8 +62,19 @@
             Action="SetAllUsersForExistingInstall"
             Value="1"
             After="AppSearch"
-            Sequence="both"
+            Sequence="ui"
             Condition="EXISTING_PERMACHINE_INSTALL AND NOT Installed" />
+        <!-- Unlike AppSearch and FindRelatedProducts, a custom action is not
+        skipped on the server side after it ran in the UI sequence. Only set
+        the context here when no UI sequence ran (basic/no UI), so that a
+        per-user choice made in InstallScopeDlg is not overridden. -->
+        <SetProperty
+            Id="ALLUSERS"
+            Action="SetAllUsersForExistingInstallExec"
+            Value="1"
+            After="AppSearch"
+            Sequence="execute"
+            Condition="EXISTING_PERMACHINE_INSTALL AND NOT Installed AND UILevel &lt; 5" />
         <SetProperty
             Id="WixAppFolder"
             Action="SetAppFolderForExistingInstall"
@@ -1185,7 +1196,7 @@
             Impersonate="no"/>
         {% endif %}
         <InstallExecuteSequence>
-            <FindRelatedProducts After="SetAllUsersForExistingInstall" />
+            <FindRelatedProducts After="SetAllUsersForExistingInstallExec" />
             <Custom Action="uninstallOldAnki" Before="InstallInitialize" Condition="OLD_ANKI_INSTALL_DIR AND NOT Installed AND NOT REMOVE" />
         {% if cookiecutter.post_install_script %}
             <!-- Interactive install -->
