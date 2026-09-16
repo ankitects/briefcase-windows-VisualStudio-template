@@ -39,15 +39,40 @@
         <Property Id="REINSTALLMODE" Value="amus" />
 
         <!-- FindRelatedProducts only detects products installed in the current
-        install context, and it runs in the UI sequence before InstallScopeDlg,
-        i.e. while the context is still the per-user default. A per-machine
-        installation is therefore never detected, and the upgrade installs a
-        second product on top of the old one instead of removing it. Windows
-        Installer skips FindRelatedProducts in the execute sequence only if it
-        already ran in the UI sequence, so suppressing it here makes it run
-        after the user's scope choice has been applied. -->
+        install context, and it normally runs at the start of the UI sequence,
+        long before InstallScopeDlg, i.e. while the context is still the
+        per-user default. A per-machine installation is therefore never
+        detected, and the upgrade installs a second product on top of the old
+        one instead of removing it. The server side does not run
+        FindRelatedProducts again once a UI sequence ran on the client.
+
+        To fix this, look for the per-machine-only InstallFolderPermissions
+        component before FindRelatedProducts runs. If it is registered, an
+        existing per-machine installation exists: switch to the per-machine
+        context (and preselect it in InstallScopeDlg) so that the existing
+        product is detected and removed by RemoveExistingProducts. -->
+        <Property Id="EXISTING_PERMACHINE_INSTALL" Secure="yes">
+            <ComponentSearch
+                Id="ExistingPerMachineInstallSearch"
+                Guid="{{ '.'.join(['install-folder-permissions', cookiecutter.app_name] + cookiecutter.bundle.split('.')[::-1])|dns_uuid5 }}"
+                Type="directory" />
+        </Property>
+        <SetProperty
+            Id="ALLUSERS"
+            Action="SetAllUsersForExistingInstall"
+            Value="1"
+            After="AppSearch"
+            Sequence="both"
+            Condition="EXISTING_PERMACHINE_INSTALL AND NOT Installed" />
+        <SetProperty
+            Id="WixAppFolder"
+            Action="SetAppFolderForExistingInstall"
+            Value="WixPerMachineFolder"
+            After="SetAllUsersForExistingInstall"
+            Sequence="ui"
+            Condition="EXISTING_PERMACHINE_INSTALL AND NOT Installed" />
         <InstallUISequence>
-            <FindRelatedProducts Suppress="yes" />
+            <FindRelatedProducts After="SetAllUsersForExistingInstall" />
         </InstallUISequence>
 
         <Icon Id="ProductIcon" SourceFile="{{ formal_name }}/icon.ico" />
@@ -849,6 +874,15 @@
                 Condition='WixAppFolder = "WixPerUserFolder"'
                 Property="MSIINSTALLPERUSER"
                 Value="1" />
+            <!-- A per-machine product detected by FindRelatedProducts cannot be
+            removed from an unelevated per-user install, so forget it. -->
+            <Publish
+                Dialog="InstallScopeDlg"
+                Control="Next"
+                Order="5"
+                Condition='WixAppFolder = "WixPerUserFolder" AND EXISTING_PERMACHINE_INSTALL'
+                Property="WIX_UPGRADE_DETECTED"
+                Value="{}" />
                 {% if cookiecutter.console_app %}
             <Publish
                 Dialog="InstallScopeDlg"
@@ -1151,6 +1185,7 @@
             Impersonate="no"/>
         {% endif %}
         <InstallExecuteSequence>
+            <FindRelatedProducts After="SetAllUsersForExistingInstall" />
             <Custom Action="uninstallOldAnki" Before="InstallInitialize" Condition="OLD_ANKI_INSTALL_DIR AND NOT Installed AND NOT REMOVE" />
         {% if cookiecutter.post_install_script %}
             <!-- Interactive install -->
