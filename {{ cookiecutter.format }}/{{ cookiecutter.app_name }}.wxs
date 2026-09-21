@@ -49,10 +49,8 @@
         To fix this, look for the per-machine-only InstallFolderPermissions
         component before FindRelatedProducts runs. If it is registered, an
         existing per-machine installation exists: switch to the per-machine
-        context so that the existing product is detected and removed by
-        RemoveExistingProducts. An update keeps the context of the existing
-        installation, so InstallScopeDlg is skipped when a related product
-        was detected. -->
+        context (and preselect it in InstallScopeDlg) so that the existing
+        product is detected and removed by RemoveExistingProducts. -->
         <Property Id="EXISTING_PERMACHINE_INSTALL" Secure="yes">
             <ComponentSearch
                 Id="ExistingPerMachineInstallSearch"
@@ -862,41 +860,14 @@
                 Condition="NOT Installed" />
                 {% endif %}
             {% else %}
-            <!-- Let the user choose the scope, unless an existing installation was
-            detected: an update keeps the context of the existing installation. -->
+            <!-- Let the user choose the scope. -->
 
             <Publish
                 Dialog="LicenseAgreementDlg"
                 Control="Next"
                 Event="NewDialog"
                 Value="InstallScopeDlg"
-                Order="99"
-                Condition='LicenseAccepted = "1" AND NOT WIX_UPGRADE_DETECTED'/>
-            <Publish
-                Dialog="LicenseAgreementDlg"
-                Control="Next"
-                Event="NewDialog"
-                Value="CustomInstallDirDlg"
-                Order="99"
-                Condition='LicenseAccepted = "1" AND WIX_UPGRADE_DETECTED'/>
-                {% if cookiecutter.console_app %}
-            <!-- InstallScopeDlg normally disables the PATH feature for the other
-            scope; do it here when the dialog is skipped. -->
-            <Publish
-                Dialog="LicenseAgreementDlg"
-                Control="Next"
-                Order="1"
-                Condition='LicenseAccepted = "1" AND WIX_UPGRADE_DETECTED AND NOT ALLUSERS'
-                Event="Remove"
-                Value="MachinePathEnvFeature" />
-            <Publish
-                Dialog="LicenseAgreementDlg"
-                Control="Next"
-                Order="1"
-                Condition='LicenseAccepted = "1" AND WIX_UPGRADE_DETECTED AND ALLUSERS'
-                Event="Remove"
-                Value="UserPathEnvFeature" />
-                {% endif %}
+                Condition='LicenseAccepted = "1"'/>
 
             <!-- Per-user scope. Although this is the default, we still need code to set
             it, because if we add more dialogs it will become possible to go back and
@@ -914,6 +885,15 @@
                 Condition='WixAppFolder = "WixPerUserFolder"'
                 Property="MSIINSTALLPERUSER"
                 Value="1" />
+            <!-- A per-machine product detected by FindRelatedProducts cannot be
+            removed from an unelevated per-user install, so forget it. -->
+            <Publish
+                Dialog="InstallScopeDlg"
+                Control="Next"
+                Order="5"
+                Condition='WixAppFolder = "WixPerUserFolder" AND EXISTING_PERMACHINE_INSTALL'
+                Property="WIX_UPGRADE_DETECTED"
+                Value="{}" />
                 {% if cookiecutter.console_app %}
             <Publish
                 Dialog="InstallScopeDlg"
@@ -982,14 +962,7 @@
                 Dialog="CustomInstallDirDlg"
                 Control="Back"
                 Event="NewDialog"
-                Value="InstallScopeDlg"
-                Condition="NOT WIX_UPGRADE_DETECTED" />
-            <Publish
-                Dialog="CustomInstallDirDlg"
-                Control="Back"
-                Event="NewDialog"
-                Value="LicenseAgreementDlg"
-                Condition="WIX_UPGRADE_DETECTED" />
+                Value="InstallScopeDlg" />
 
                 {% if cookiecutter.install_options %}
 
