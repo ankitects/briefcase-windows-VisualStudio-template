@@ -228,6 +228,30 @@ int Main(array<String^>^ args) {
             exit(-15);
         }
 
+        // Point sys.executable at python*.exe so that the app can start Python subprocesses.
+        {% if cookiecutter.console_app %}
+        path = python_home + "\\python.exe";
+        {% else %}
+        path = python_home + "\\pythonw.exe";
+        {% endif -%}
+        if (File::Exists(path)) {
+            debug_log("Setting sys.executable: %S\n", wstr(path));
+            module_attr = PyUnicode_FromWideChar(wstr(path), path->Length);
+        } else {
+            debug_log("Clearing sys.executable\n");
+            module_attr = PyUnicode_FromString("");
+        }
+
+        // _base_executable must match too; otherwise multiprocessing assumes
+        // a venv and launches this stub instead.
+        if (module_attr == NULL
+            || PySys_SetObject("executable", module_attr) < 0
+            || PySys_SetObject("_base_executable", module_attr) < 0) {
+            crash_dialog("Could not set sys.executable");
+            exit(-16);
+        }
+        Py_DECREF(module_attr);
+
         // Start the app module.
         //
         // From here to Py_ObjectCall(runmodule...) is effectively
@@ -391,16 +415,20 @@ void setup_stdout(FileVersionInfo^ version_info) {
         // Python uses the CRT for I/O, and it requires the descriptors are reopened.
         // Windows GUI apps return to the prompt immediately, so console output from
         // this app is able to contaminate output from other commands being executed;
-        // but that's better than not seeing console output at all. However, we can't
-        // do this in test mode, because it prevents Briefcase seeing test output.
+        // but that's better than not seeing console output at all.
+        //
+        // However, if stdout has already been redirected to a pipe or a file (e.g.
+        // by Briefcase, which runs the app with its stdout connected to a pipe so it
+        // can stream the app's output), we must *not* reopen it against the console.
+        // Doing so would silently discard everything written to the pipe/file, with
+        // no error raised anywhere: the app continues to run and write output
+        // normally, but that output goes to the console rather than to whatever
+        // stdout was originally connected to. See beeware/briefcase#2969.
         FILE *new_stdin;
         FILE *new_stdout;
         FILE *new_stderr;
-        wchar_t *app_module_str;
-        size_t size;
 
-        _wdupenv_s(&app_module_str, &size, L"BRIEFCASE_MAIN_MODULE");
-        if (!app_module_str) {
+        if (GetFileType(GetStdHandle(STD_OUTPUT_HANDLE)) == FILE_TYPE_CHAR) {
             freopen_s(&new_stdin, "CONIN$", "r", stdin);
             freopen_s(&new_stdout, "CONOUT$", "w", stdout);
             freopen_s(&new_stderr, "CONOUT$", "w", stderr);
